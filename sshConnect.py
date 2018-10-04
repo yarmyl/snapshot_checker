@@ -22,5 +22,5 @@ class sshConnect:
 
     def get_cmd(self, command):
         stdin, stdout, stderr = self.__client.exec_command(command)
-        data = stdout.read() + stderr.read()
+        data = stdout.read().decode()# + stderr.read().decode()
         return data
