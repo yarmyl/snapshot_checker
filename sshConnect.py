@@ -9,7 +9,7 @@ class sshConnect:
         host = conn['host']
         user = conn['user']
         passwd = conn.get('pass')
-        port = conn['port'] if conn.get('port') else '22'
+        port = int(conn['port']) if conn.get('port') else 22
         self.__client = paramiko.SSHClient()
         self.__client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
