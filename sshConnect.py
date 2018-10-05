@@ -10,6 +10,8 @@ class sshConnect:
         user = conn['user']
         passwd = conn.get('pass')
         port = int(conn['port']) if conn.get('port') else 22
+        self.percent = int(conn['percent']) if conn.get('percent') else 50
+        self.count = int(conn['count']) if conn.get('count') else 2
         self.__client = paramiko.SSHClient()
         self.__client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
