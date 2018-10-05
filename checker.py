@@ -7,12 +7,22 @@ from multiprocessing import Pool
 import re
 import time
 import datetime
+import argparse
+import mySQLConnect
+
+"""Разбор аргументов"""
+def createParser ():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mysql', action='store_true') # запись в mysql
+    parser.add_argument('--out', action='store_true') # вывод из mysql
+    return parser
 
 """Запуск Параллельных процессов для разных хостов"""
 def start(connect):
     print("connect to " + connect['name'] + "...")
-    start_time = int(time.time())
+    start_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     ret = []
+    result = dict()
     try:
         esxi = sshConnect.sshConnect(connect)
     except:
@@ -25,8 +35,9 @@ def start(connect):
             if res:
                 res.update({'vm_name': vm, 'start_time': start_time})
                 ret.append(res)
-        print({'ESXi_name': connect['name'], 'ESXi_vms': ret})
+        result = {'ESXi_name': connect['name'], 'ESXi_vms': ret}
         del esxi
+    return result
 
 """Проверка виртуальной машины на наличие условий
 больше 2х снепшотов, и больше 50% занимаемого 
@@ -81,10 +92,11 @@ def check_snap(disks, esxi, path, work_path, summ):
             conf = re.sub('-delta\.vmdk', '.vmdk', snap[id]['file'])
             snap_time = esxi.get_cmd('ls -le ' + conf + 
 				" | awk '{print $7,$8,$9,$10}'").split('\n')[0].split(' ')
-            snap_time = int(datetime.datetime(int(snap_time[3]), month[snap_time[0]], 
+            snap_time = datetime.datetime(int(snap_time[3]), month[snap_time[0]], 
 					int(snap_time[1]), hour=int(snap_time[2].split(':')[0]), 
 					minute=int(snap_time[2].split(':')[1]), 
-					second=int(snap_time[2].split(':')[2])).timestamp())
+					second=int(snap_time[2].split(':')[2])).strftime('%Y-%m-%d %H:%M:%S')
+					#.timestamp())
 					#.strftime('%Y-%m-%d %H:%M:%S')
             snap[id].update({'snap_time': snap_time})
             parent = esxi.get_cmd('cat ' + conf + 
@@ -165,23 +177,61 @@ def parse_vmx(conf):
 
 """Парсим файл настроек"""
 def get_settings(config):
-    settings = []
+    esxis = []
+    settings = dict()
     for section in config.sections():
-        value = {'name': section}
+        value = dict()
         for setting in config[section]:
             value.update({setting: config.get(section, setting)})
-        settings.append(value)
+        if section != 'MYSQL':
+            value.update({'name': section})
+            esxis.append(value)
+        else:
+            settings.update({section: value})	    
+    settings.update({'esxis': esxis})
     return settings
 
 def main():
+    parser = createParser()
+    namespace = parser.parse_args()
     parser = configparser.ConfigParser()
     parser.read('conn.conf')
     settings = get_settings(parser)
-    if len(settings) > 0:
-        p = Pool(len(settings))
-        res = p.map(start, settings)
-#        p.join()
-        p.close()
+    if namespace.mysql and namespace.out:
+        if settings.get('MYSQL'):
+            mysql = settings.pop('MYSQL')
+            DB = mySQLConnect.myConn(mysql)
+            print(DB.execute("SELECT * FROM SNAPSHOTS"))
+            del DB
+        else:
+            print("Error: Haven't mysql config")
+    elif len(settings) > 0:
+        mysql = 0
+#        print(settings)
+        if namespace.mysql and settings.get('MYSQL'):
+            mysql = settings.pop('MYSQL')
+        elif namespace.mysql:
+            print("Error: Haven't mysql config")
+            return 0
+        elif settings.get('MYSQL'):
+            settings.pop('MYSQL')
+        if settings.get('esxis'):
+            p = Pool(len(settings.get('esxis')))
+            res = p.map(start, settings.get('esxis'))
+            print(res)
+            if mysql:
+                DB = mySQLConnect.myConn(mysql)
+                for esxi in res:
+                    for vm in esxi['ESXi_vms']:
+                        for snap in vm['snap_info']:
+                            DB.execute("""INSERT INTO SNAPSHOTS (vm_name, snap_name, snap_size, snap_time, time)
+					VALUES (%s, %s, %s, %s, %s)""", [vm['vm_name'], snap['snap_name'], 
+					snap['snap_size'], snap['snap_time'], vm['start_time']])
+                print("Inser data to DB...")
+                DB.commit()
+                print("Success!")
+                del DB
+            p.close()
     else:
         print("Conf file is empty!")
 
