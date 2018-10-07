@@ -119,6 +119,9 @@ def check_snap(disks, esxi, path, work_path, summ):
 					minute=int(snap_time[2].split(':')[1]), 
 					second=int(snap_time[2].split(':')[2])).strftime('%Y-%m-%d %H:%M:%S')
             snap[id].update({'snap_time': snap_time})
+            snap_comment = esxi.get_cmd('cat ' + path + "*.vmsd | grep " + 
+				uid + ".description | sed 's/^.* = \"//g; s/\"$//g'").split('\n')[0]
+            snap[id].update({'snap_comment': snap_comment})
             snap[id].pop('file')
             res.append(snap[id])
     return res
@@ -261,9 +264,9 @@ def main():
                     for vm in esxi['ESXi_vms']:
                         for snap in vm['snap_info']:
                             print("start: {0}, ESXi_name: {1}, VM_name: {2}, VM_size: {3}, Snap_name: {4}," 
-                                      "Snap_start: {5}, Snap_size: {6}".format(
+                                      "Snap_comment: {5}, Snap_start: {6}, Snap_size: {7}".format(
                                       esxi['start_time'], esxi['ESXi_name'], vm['vm_name'], 
-                                      convert_size(int(vm['disk_size']), 0), snap['snap_name'], 
+                                      convert_size(int(vm['disk_size']), 0), snap['snap_name'], snap['snap_comment'],
                                       snap['snap_time'], convert_size(int(snap['snap_size']), 0))
                             )
             else:
