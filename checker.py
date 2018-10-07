@@ -91,6 +91,7 @@ def check_snap(disks, esxi, path, work_path, summ):
     for id in snap:
         if snap[id]['snap_size'] / summ > esxi.percent / 100:
             conf = re.sub('-delta\.vmdk', '.vmdk', snap[id]['file'])
+            """"
             snap_time = esxi.get_cmd('ls -le ' + conf + 
 				" | awk '{print $7,$8,$9,$10}'").split('\n')[0].split(' ')
             snap_time = datetime.datetime(int(snap_time[3]), month[snap_time[0]], 
@@ -100,6 +101,7 @@ def check_snap(disks, esxi, path, work_path, summ):
 					#.timestamp())
 					#.strftime('%Y-%m-%d %H:%M:%S')
             snap[id].update({'snap_time': snap_time})
+            """
             parent = esxi.get_cmd('cat ' + conf + 
 			""" | grep parentFileNameHint=\\" | sed 's/parentFileNameHint="//g; s/"//g'""").split('\n')[0]
             uid = esxi.get_cmd('cat ' + path + "*.vmsd | grep " + parent).split('\n')[0]
@@ -107,6 +109,16 @@ def check_snap(disks, esxi, path, work_path, summ):
             snap_name = esxi.get_cmd('cat ' + path + "*.vmsd | grep " + 
 				uid + ".displayName | sed 's/^.* = \"//g; s/\"$//g'").split('\n')[0]
             snap[id].update({'snap_name': snap_name})
+            snap_file = esxi.get_cmd('cat ' + path + "*.vmsd | grep " + 
+				uid + ".filename | sed 's/^.* = \"//g; s/\"$//g'").split('\n')[0]
+            snap_file = add_path(snap_file, path, work_path)
+            snap_time = esxi.get_cmd('ls -le ' + snap_file + 
+				" | awk '{print $7,$8,$9,$10}'").split('\n')[0].split(' ')
+            snap_time = datetime.datetime(int(snap_time[3]), month[snap_time[0]], 
+					int(snap_time[1]), hour=int(snap_time[2].split(':')[0]), 
+					minute=int(snap_time[2].split(':')[1]), 
+					second=int(snap_time[2].split(':')[2])).strftime('%Y-%m-%d %H:%M:%S')
+            snap[id].update({'snap_time': snap_time})
             snap[id].pop('file')
             res.append(snap[id])
     return res
