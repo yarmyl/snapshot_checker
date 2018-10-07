@@ -14,7 +14,8 @@ import mySQLConnect
 def createParser ():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mysql', action='store_true') # запись в mysql
-    parser.add_argument('--out', action='store_true') # вывод из mysql
+    parser.add_argument('--out', action='store_true') # вывод для человека
+    parser.add_argument('--mysql_out', action='store_true') # вывод из mysql
     return parser
 
 """Запуск Параллельных процессов для разных хостов"""
@@ -33,9 +34,9 @@ def start(connect):
 #            print(str(start_time) + ' ' + vm)
             res = check(vms[vm], esxi)
             if res:
-                res.update({'vm_name': vm, 'start_time': start_time})
+                res.update({'vm_name': vm})
                 ret.append(res)
-        result = {'ESXi_name': connect['name'], 'ESXi_vms': ret}
+        result = {'start_time': start_time, 'ESXi_name': connect['name'], 'ESXi_vms': ret}
         del esxi
     return result
 
@@ -191,13 +192,25 @@ def get_settings(config):
     settings.update({'esxis': esxis})
     return settings
 
+def convert_size(size, type):
+    if size > 1024:
+        return convert_size(size / 1024, type + 1)
+    else:
+        if type == 0: type = "B"
+        elif type == 1: type = "K"
+        elif type == 2: type = "M"
+        elif type == 3: type = "G"
+        elif type == 4: type = "T"
+        elif type == 5: type = "P"
+        return str(round(size, 1)) + type
+
 def main():
     parser = createParser()
     namespace = parser.parse_args()
     parser = configparser.ConfigParser()
     parser.read('conn.conf')
     settings = get_settings(parser)
-    if namespace.mysql and namespace.out:
+    if namespace.mysql_out:
         if settings.get('MYSQL'):
             mysql = settings.pop('MYSQL')
             DB = mySQLConnect.myConn(mysql)
@@ -218,7 +231,7 @@ def main():
         if settings.get('esxis'):
             p = Pool(len(settings.get('esxis')))
             res = p.map(start, settings.get('esxis'))
-            print(res)
+#            print(res)
             if mysql:
                 DB = mySQLConnect.myConn(mysql)
                 for esxi in res:
@@ -226,11 +239,23 @@ def main():
                         for snap in vm['snap_info']:
                             DB.execute("""INSERT INTO SNAPSHOTS (vm_name, snap_name, snap_size, snap_time, time)
 					VALUES (%s, %s, %s, %s, %s)""", [vm['vm_name'], snap['snap_name'], 
-					snap['snap_size'], snap['snap_time'], vm['start_time']])
+					snap['snap_size'], snap['snap_time'], esxi['start_time']])
                 print("Inser data to DB...")
                 DB.commit()
                 print("Success!")
                 del DB
+            if namespace.out:
+                for esxi in res:
+                    for vm in esxi['ESXi_vms']:
+                        for snap in vm['snap_info']:
+                            print("start: {0}, ESXi_name: {1}, VM_name: {2}, VM_size: {3}, Snap_name: {4}," 
+                                      "Snap_start: {5}, Snap_size: {6}".format(
+                                      esxi['start_time'], esxi['ESXi_name'], vm['vm_name'], 
+                                      convert_size(int(vm['disk_size']), 0), snap['snap_name'], 
+                                      snap['snap_time'], convert_size(int(snap['snap_size']), 0))
+                            )
+            else:
+                print(res)
             p.close()
     else:
         print("Conf file is empty!")
