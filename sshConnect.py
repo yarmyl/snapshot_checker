@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import paramiko 
+import paramiko
+
 
 class sshConnect:
 
@@ -15,7 +16,8 @@ class sshConnect:
         self.__client = paramiko.SSHClient()
         self.__client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            self.__client.connect(hostname=host, username=user, password=passwd, port=port)
+            self.__client.connect(
+                hostname=host, username=user, password=passwd, port=port)
         except:
             print("Failed to connect!")
 
@@ -24,5 +26,5 @@ class sshConnect:
 
     def get_cmd(self, command):
         stdin, stdout, stderr = self.__client.exec_command(command)
-        data = stdout.read().decode()# + stderr.read().decode()
+        data = stdout.read().decode()  # + stderr.read().decode()
         return data
