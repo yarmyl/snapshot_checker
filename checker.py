@@ -10,9 +10,8 @@ import datetime
 import argparse
 import mySQLConnect
 
+
 """Разбор аргументов"""
-
-
 def createParser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mysql', action='store_true')  # запись в mysql
@@ -22,8 +21,6 @@ def createParser():
 
 
 """Запуск Параллельных процессов для разных хостов"""
-
-
 def start(connect):
     print("connect to " + connect['name'] + "...")
     start_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -31,7 +28,7 @@ def start(connect):
     result = dict()
     try:
         esxi = sshConnect.sshConnect(connect)
-    except:
+    except Exception:
         pass
     else:
         vms = parse_vmx(esxi.get_cmd('esxcli vm process list'))
@@ -48,10 +45,8 @@ def start(connect):
 
 
 """Проверка виртуальной машины на наличие условий
-больше 2х снепшотов, и больше 50% занимаемого 
+больше 2х снепшотов, и больше 50% занимаемого
 снепшотом места относительно суммы объемов дисков"""
-
-
 def check(vmx, esxi):
     ret = dict()
     path = '/'.join(vmx.split('/')[:-1]) + '/'
@@ -59,18 +54,21 @@ def check(vmx, esxi):
     work_path = esxi.get_cmd('cat ' + vmx + "| grep workingDir")
     if work_path:
         work_path = work_path.split('\n')[0]
-    num_snap = esxi.get_cmd('cat ' + path + """*.vmsd | 
-				grep 'snapshot.numSnapshots = ' | awk '{print $3}'""")
+    num_snap = esxi.get_cmd('cat ' + path + """*.vmsd |
+                grep 'snapshot.numSnapshots = ' | awk '{print $3}'""")
     if num_snap:
         if int(num_snap.split('\n')[0].split('"')[1]) >= esxi.count:
-            disks = esxi.get_cmd('cat ' + path + """*.vmsd | 
-				egrep "snapshot0\.disk[0-9]*\.fileName = " | 
-				grep '.vmdk\"$'""").split('\n')
-#            print(disks)
-#            if sum_snap(disks, esxi, path, work_path) / sum_disk(disks, esxi, path) > 0.5:
-#                print(disks)
-#                print(sum_disk(disks, esxi, path))
-#                print(sum_snap(disks, esxi, path, work_path))
+            disks = esxi.get_cmd('cat ' + path + r"""*.vmsd | \
+                    egrep "snapshot0\.disk[0-9]*\.fileName = " | \
+                    grep '.vmdk\"$'""").split('\n')
+            """
+            print(disks)
+            if sum_snap(disks, esxi, path, work_path) / \
+                                sum_disk(disks, esxi, path) > 0.5:
+                print(disks)
+                print(sum_disk(disks, esxi, path))
+                print(sum_snap(disks, esxi, path, work_path))
+            """
             summ = sum_disk(disks, esxi, path)
             res = check_snap(disks, esxi, path, work_path, summ)
             if res:
@@ -79,8 +77,6 @@ def check(vmx, esxi):
 
 
 """Сравниваем снепшот с объемом дисков"""
-
-
 def check_snap(disks, esxi, path, work_path, summ):
     res = []
     size = 0
@@ -89,56 +85,72 @@ def check_snap(disks, esxi, path, work_path, summ):
         try:
             name = disk[re.match(
                 'snapshot0.disk[0-9]+.fileName = "', disk).end():-1]
-        except:
+        except Exception:
             pass
         else:
             name = add_path(name, path, work_path)
-            pname = re.sub('\.vmdk$', '-*-delta.vmdk', name)
-            for file in esxi.get_cmd('ls -l ' + pname + "| awk '{print $5,$9}'").split('\n'):
+            pname = re.sub(r'\.vmdk$', '-*-delta.vmdk', name)
+            for file in esxi.get_cmd(
+                                    'ls -l ' + pname +
+                                    "| awk '{print $5,$9}'").split('\n'):
                 if file:
-                    id = re.sub(re.sub('\.vmdk$', '', name),
+                    id = re.sub(re.sub(r'\.vmdk$', '', name),
                                 '', file.split(' ')[1])
                     if snap.get(id):
                         snap[id].update(
-                            {'snap_size': snap[id]['snap_size'] + int(file.split(' ')[0])})
+                            {'snap_size': snap[id]['snap_size'] +
+                                int(file.split(' ')[0])}
+                        )
                     else:
                         snap[id] = {'snap_size': int(file.split(
                             ' ')[0]), 'file': file.split(' ')[1]}
     for id in snap:
         if snap[id]['snap_size'] / summ > esxi.percent / 100:
-            conf = re.sub('-delta\.vmdk', '.vmdk', snap[id]['file'])
+            conf = re.sub(r'-delta\.vmdk', '.vmdk', snap[id]['file'])
             """"
-            snap_time = esxi.get_cmd('ls -le ' + conf + 
-				" | awk '{print $7,$8,$9,$10}'").split('\n')[0].split(' ')
-            snap_time = datetime.datetime(int(snap_time[3]), month[snap_time[0]], 
-					int(snap_time[1]), hour=int(snap_time[2].split(':')[0]), 
-					minute=int(snap_time[2].split(':')[1]), 
-					second=int(snap_time[2].split(':')[2])).strftime('%Y-%m-%d %H:%M:%S')
-					#.timestamp())
-					#.strftime('%Y-%m-%d %H:%M:%S')
+            snap_time = esxi.get_cmd('ls -le ' + conf +
+                " | awk '{print $7,$8,$9,$10}'").split('\n')[0].split(' ')
+            snap_time = datetime.datetime(int(snap_time[3]),
+                    month[snap_time[0]],
+                    int(snap_time[1]), hour=int(snap_time[2].split(':')[0]),
+                    minute=int(snap_time[2].split(':')[1]),
+                    second=int(snap_time[2].split(':')[2]))
+                        .strftime('%Y-%m-%d %H:%M:%S')
+                    #.timestamp())
+                    #.strftime('%Y-%m-%d %H:%M:%S')
             snap[id].update({'snap_time': snap_time})
             """
-            parent = esxi.get_cmd('cat ' + conf +
-                                  """ | grep parentFileNameHint=\\" | sed 's/parentFileNameHint="//g; s/"//g'""").split('\n')[0]
+            parent = esxi.get_cmd(
+                'cat ' + conf + """ | grep parentFileNameHint=\\" | \
+                sed 's/parentFileNameHint="//g; s/"//g'"""
+            ).split('\n')[0]
             uid = esxi.get_cmd(
                 'cat ' + path + "*.vmsd | grep " + parent).split('\n')[0]
-            uid = re.sub('\.disk[0-9]+\.fileName = ".*$', '', uid)
-            snap_name = esxi.get_cmd('cat ' + path + "*.vmsd | grep " +
-                                     uid + ".displayName | sed 's/^.* = \"//g; s/\"$//g'").split('\n')[0]
+            uid = re.sub(r'\.disk[0-9]+\.fileName = ".*$', '', uid)
+            snap_name = esxi.get_cmd(
+                'cat ' + path + "*.vmsd | grep " + uid +
+                ".displayName | sed 's/^.* = \"//g; s/\"$//g'"
+            ).split('\n')[0]
             snap[id].update({'snap_name': snap_name})
-            snap_file = esxi.get_cmd('cat ' + path + "*.vmsd | grep " +
-                                     uid + ".filename | sed 's/^.* = \"//g; s/\"$//g'").split('\n')[0]
+            snap_file = esxi.get_cmd(
+                'cat ' + path + "*.vmsd | grep " + uid +
+                ".filename | sed 's/^.* = \"//g; s/\"$//g'"
+            ).split('\n')[0]
             snap_file = add_path(snap_file, path, work_path)
-            snap_time = esxi.get_cmd('ls -le ' + snap_file +
-                                     " | awk '{print $7,$8,$9,$10}'").split('\n')[0].split(' ')
-            snap_time = datetime.datetime(int(snap_time[3]), month[snap_time[0]],
-                                          int(snap_time[1]), hour=int(snap_time[2].split(':')[0]),
-                                          minute=int(
-                                              snap_time[2].split(':')[1]),
-                                          second=int(snap_time[2].split(':')[2])).strftime('%Y-%m-%d %H:%M:%S')
+            snap_time = esxi.get_cmd(
+                'ls -le ' + snap_file + " | awk '{print $7,$8,$9,$10}'"
+            ).split('\n')[0].split(' ')
+            snap_time = datetime.datetime(
+                int(snap_time[3]), month[snap_time[0]],
+                int(snap_time[1]), hour=int(snap_time[2].split(':')[0]),
+                minute=int(snap_time[2].split(':')[1]),
+                second=int(snap_time[2].split(':')[2])
+            ).strftime('%Y-%m-%d %H:%M:%S')
             snap[id].update({'snap_time': snap_time})
-            snap_comment = esxi.get_cmd('cat ' + path + "*.vmsd | grep " +
-                                        uid + ".description | sed 's/^.* = \"//g; s/\"$//g'").split('\n')[0]
+            snap_comment = esxi.get_cmd(
+                'cat ' + path + "*.vmsd | grep " + uid +
+                ".description | sed 's/^.* = \"//g; s/\"$//g'"
+            ).split('\n')[0]
             snap[id].update({'snap_comment': snap_comment})
             snap[id].pop('file')
             res.append(snap[id])
@@ -146,8 +158,6 @@ def check_snap(disks, esxi, path, work_path, summ):
 
 
 """добаление пути"""
-
-
 def add_path(name, path, work_path):
     if work_path and re.match('/vmfs/', name):
         name = work_path + name.split('/')[-1]
@@ -159,12 +169,13 @@ def add_path(name, path, work_path):
 
 
 """словарь месяцев"""
-month = {'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6, 'Jul': 7,
-         'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+month = {
+    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+}
+
 
 """Сумма снепшотов"""
-
-
 def sum_snap(disks, esxi, path, work_path):
     res = 0
     for disk in disks:
@@ -177,17 +188,17 @@ def sum_snap(disks, esxi, path, work_path):
                 name = work_path + name
             elif not re.match('/vmfs/', name):
                 name = path + name
-            name = re.sub('\.vmdk$', '-*-delta.vmdk', name)
-            for size in esxi.get_cmd('ls -l ' + name + "| awk '{print $5}'").split('\n'):
+            name = re.sub(r'\.vmdk$', '-*-delta.vmdk', name)
+            for size in esxi.get_cmd(
+                'ls -l ' + name + "| awk '{print $5}'"
+            ).split('\n'):
                 res = res + int(size)
-        except:
+        except Exception:
             pass
     return res
 
 
 """Сумма жестких дисков"""
-
-
 def sum_disk(disks, esxi, path):
     res = 0
     for disk in disks:
@@ -198,27 +209,25 @@ def sum_disk(disks, esxi, path):
 #            if not re.search('-[0-9]{6}.vmdk$', name):
             if not re.match('/vmfs/', name):
                 name = path + name
-            name = re.sub('\.vmdk$', '-flat.vmdk', name)
+            name = re.sub(r'\.vmdk$', '-flat.vmdk', name)
             res = res + int(esxi.get_cmd('ls -l ' +
                                          name + "| awk '{print $5}'"))
-        except:
+        except Exception:
             pass
     return res
 
 
 """Парсим виртуальные машины на хосте
 получаем имя машины и путь к файлу настроек"""
-
-
 def parse_vmx(conf):
     vms = dict()
     arr = conf.split('\n')
     for line in arr:
-        res = re.match('\s+Display Name:\s+', line)
+        res = re.match(r'\s+Display Name:\s+', line)
         if res:
             name = line[res.end():]
         else:
-            res = re.match('\s+Config File:\s+', line)
+            res = re.match(r'\s+Config File:\s+', line)
             if res:
                 conf_file = line[res.end():]
                 vms.update({name: conf_file})
@@ -226,8 +235,6 @@ def parse_vmx(conf):
 
 
 """Парсим файл настроек"""
-
-
 def get_settings(config):
     esxis = []
     settings = dict()
@@ -244,6 +251,7 @@ def get_settings(config):
     return settings
 
 
+"""Перевод размера"""
 def convert_size(size, type):
     if size > 1024:
         return convert_size(size / 1024, type + 1)
@@ -296,9 +304,14 @@ def main():
                 for esxi in res:
                     for vm in esxi['ESXi_vms']:
                         for snap in vm['snap_info']:
-                            DB.execute("""INSERT INTO SNAPSHOTS (vm_name, snap_name, snap_size, snap_time, time)
-					VALUES (%s, %s, %s, %s, %s)""", [vm['vm_name'], snap['snap_name'],
-                                      snap['snap_size'], snap['snap_time'], esxi['start_time']])
+                            DB.execute(
+                                """INSERT INTO SNAPSHOTS (
+                                vm_name, snap_name, snap_size, snap_time, time)
+                                VALUES (%s, %s, %s, %s, %s)""",
+                                [vm['vm_name'], snap['snap_name'],
+                                    snap['snap_size'], snap['snap_time'],
+                                    esxi['start_time']]
+                            )
                 print("Inser data to DB...")
                 DB.commit()
                 print("Success!")
@@ -307,13 +320,25 @@ def main():
                 for esxi in res:
                     for vm in esxi['ESXi_vms']:
                         for snap in vm['snap_info']:
-                            print("start: {0}, ESXi_name: {1}, VM_name: {2}, VM_size: {3}, Snap_name: {4},"
-                                  "Snap_comment: {5}, Snap_start: {6}, Snap_size: {7}".format(
-                                      esxi['start_time'], esxi['ESXi_name'], vm['vm_name'],
-                                      convert_size(
-                                          int(vm['disk_size']), 0), snap['snap_name'], snap['snap_comment'],
-                                      snap['snap_time'], convert_size(int(snap['snap_size']), 0))
-                                  )
+                            print(
+                                    "start: {0}, ESXi_name: {1}, VM_name: {2},"
+                                    "VM_size: {3}, Snap_name: {4},"
+                                    "Snap_comment: {5}, Snap_start: {6},"
+                                    "Snap_size: {7}".format(
+                                                esxi['start_time'],
+                                                esxi['ESXi_name'],
+                                                vm['vm_name'],
+                                                convert_size(
+                                                    int(vm['disk_size']), 0
+                                                ),
+                                                snap['snap_name'],
+                                                snap['snap_comment'],
+                                                snap['snap_time'],
+                                                convert_size(
+                                                    int(snap['snap_size']), 0
+                                                )
+                                    )
+                            )
             else:
                 print(res)
             p.close()

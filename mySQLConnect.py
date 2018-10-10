@@ -5,8 +5,8 @@ import mysql.connector
 
 
 class myConn:
-    """Парсим конфиг и инициализируем коннект к базе данных"""
 
+    """Парсим конфиг и инициализируем коннект к базе данных"""
     def __init__(self, conf):
         try:
             print('Try read config')
@@ -14,14 +14,13 @@ class myConn:
             self.__user = conf['user']
             self.__pass = conf.get('pass')
             self.__db = conf['db']
-        except:
+        except Exception:
             print('Fail to read config')
             raise SystemExit()
         print("Success!")
         self.connect()
 
     """пробуем законнкетиться"""
-
     def connect(self):
         try:
             print("Try connect DB")
@@ -31,7 +30,7 @@ class myConn:
                 password=self.__pass,
                 database=self.__db
             )
-        except:
+        except Exception:
             print('Fail to connect!')
             raise SystemExit()
         print("Success!")
@@ -40,7 +39,6 @@ class myConn:
         self.__dbc.close()
 
     """Выполняем  sql-запрос"""
-
     def execute(self, sql, list=None):
         cur = self.__dbc.cursor()
         res = None
@@ -57,7 +55,6 @@ class myConn:
         return res
 
     """выполняем множественный sql-запрос"""
-
     def execute_many(self, sql, list):
         if len(list) != 0:
             cur = self.__dbc.cursor()
@@ -65,6 +62,5 @@ class myConn:
             cur.close()
 
     """подтверждаем изменения в DB"""
-
     def commit(self):
         self.__dbc.commit()

@@ -18,7 +18,7 @@ class sshConnect:
         try:
             self.__client.connect(
                 hostname=host, username=user, password=passwd, port=port)
-        except:
+        except Exception:
             print("Failed to connect!")
 
     def __del__(self):
